@@ -1,0 +1,61 @@
+{
+  "name": "slimtunes",
+  "private": false,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"SLIMTUNES_DEV=1 node --watch server/index.ts\" \"vite\"",
+    "build": "tsc -b && vite build",
+    "start": "SLIMTUNES_OPEN=1 node server/index.ts",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "lint": "oxlint",
+    "fixtures": "node scripts/make-fixtures.ts"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.9.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@hono/node-server": "^2.1.5",
+    "chokidar": "^6.0.0",
+    "class-variance-authority": "^0.7.1",
+    "cmdk": "^1.1.1",
+    "cn": "^0.5.1",
+    "hono": "^4.13.14",
+    "lucide-react": "^1.65.0",
+    "music-metadata": "^12.3.2",
+    "node-taglib-sharp": "^6.0.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sonner": "^2.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "oxlint": "^1.89.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5",
+    "@tailwindcss/vite": "^4.3.3",
+    "tailwindcss": "^4.3.3",
+    "shadcn": "^4.23.0",
+    "tw-animate-css": "^1.4.0"
+  },
+  "description": "Clean up, MusicBrainz-match and organize your music library.",
+  "license": "MIT",
+  "bin": {
+    "slimtunes": "bin/slimtunes.js"
+  },
+  "files": [
+    "bin",
+    "server",
+    "shared",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=23.6"
+  }
+}
