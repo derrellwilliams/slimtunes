@@ -4,6 +4,7 @@ import type { Plan, PlanAlbum, PlanOp, Release, ReleaseTrack, Rules, TrackFile }
 import { albumFiles, db, listAlbums } from './db.ts'
 import { AUDIO_EXT, ext } from './scanner.ts'
 import { emptyDirs, isJunk } from './cleanup.ts'
+import { coverKnownMissing } from './coverart.ts'
 import { renderTemplate, type TemplateValues } from './template.ts'
 import { year } from './text.ts'
 import type { TagValues } from './tagger.ts'
@@ -11,9 +12,23 @@ import type { TagValues } from './tagger.ts'
 export const VARIOUS_ARTISTS_ID = '89ad4ac3-39f7-470e-963a-56509c546377'
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'])
 
+/** Order- and format-insensitive genre set: ID3 may read back ["Ambient", "Post-Rock;Art Rock"]. */
+export function genreKey(genres: string[] | undefined): string {
+  return [...new Set((genres ?? []).flatMap((g) => g.split(/[;/\0]/)).map((g) => g.trim().toLowerCase()).filter(Boolean))].sort().join('|')
+}
+
 /** A whole album ripped to one file with a .cue sheet. SlimTunes can't split it, so it's filed as-is. */
 export function isSingleFileRip(files: TrackFile[], release: Release) {
-  return files.length === 1 && release.tracks.length > 2
+  if (files.length !== 1 || release.tracks.length <= 2) return false
+  // A lone track from a bigger album is not a rip: require the file to span most of the album, or a .cue next to it.
+  const [f] = files
+  const total = release.tracks.reduce((n, t) => n + (t.length ?? 0), 0)
+  if (f.duration && total) return f.duration > total * 0.5
+  try {
+    return readdirSync(path.dirname(f.path)).some((n) => n.toLowerCase().endsWith('.cue'))
+  } catch {
+    return false
+  }
 }
 
 export function isCompilation(r: Release) {
@@ -118,8 +133,10 @@ class Reserver {
 function changes(f: TrackFile, v: TagValues): Record<string, [string, string]> {
   const out: Record<string, [string, string]> = {}
   const cmp = (k: string, a: unknown, b: unknown) => {
+    // writeTags leaves a field alone when it has no new value, so that isn't a change.
+    if (b === undefined || b === null || b === 0) return
     const x = a === undefined || a === null ? '' : String(a)
-    const y = b === undefined || b === null ? '' : String(b)
+    const y = String(b)
     if (x !== y) out[k] = [x, y]
   }
   cmp('title', f.tags.title, v.title)
@@ -205,12 +222,13 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
       const aligned = new Map(a.alignment.map((x) => [x.filePath, x.trackId]))
       let folderAbs = ''
       pa.releaseId = release.id
+      const singleFile = isSingleFileRip(files, release)
       for (const f of files) {
         if (a.duplicateFiles.includes(f.path)) {
           if (rules.duplicates === 'move-to-duplicates') move(f.path, toDupes(f.path), 'duplicates')
           continue
         }
-        if (isSingleFileRip(files, release)) {
+        if (singleFile) {
           // One file holding the whole album (+ .cue): file it in the album folder under its own name, tags untouched.
           const first = release.tracks[0]
           const albumDir = path.dirname(path.join(destRoot, destFor(release, first, rules)))
@@ -225,11 +243,17 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
         const albumDir = rules.multiDisc === 'subfolder' && release.discCount > 1 ? path.dirname(path.dirname(dest)) : path.dirname(dest)
         folderAbs ||= albumDir
         const v = tagValuesFor(release, track, rules, genres)
-        tagValues[f.path] = v
         const ch = changes(f, v)
         // Already organized and tagged with this exact release: skip the (slow) rewrite.
-        const upToDate = !Object.keys(ch).length && f.tags.mbReleaseId === release.id && f.tags.mbRecordingId === track.recordingId
+        const sameGenres = !v.genres?.length || genreKey(f.tags.genres) === genreKey(v.genres)
+        const upToDate =
+          !Object.keys(ch).length &&
+          f.tags.mbReleaseId === release.id &&
+          f.tags.mbRecordingId === track.recordingId &&
+          sameGenres &&
+          (!rules.art.embed || f.hasArt !== false || coverKnownMissing(release.id, rules.art.size))
         if (!upToDate) {
+          tagValues[f.path] = v
           pa.tagChanges += Object.keys(ch).length ? 1 : 0
           ops.push({ kind: 'tags', path: f.path, albumId: a.id, changes: ch })
         }
@@ -237,12 +261,13 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
       }
       // Files that didn't map to a track ride along with the album under their current names.
       for (const f of files) {
-        if (aligned.get(f.path) || a.duplicateFiles.includes(f.path) || !folderAbs || isSingleFileRip(files, release)) continue
+        if (aligned.get(f.path) || a.duplicateFiles.includes(f.path) || !folderAbs || singleFile) continue
         move(f.path, path.join(folderAbs, path.basename(f.path)), 'moves')
       }
       pa.destFolder = path.relative(destRoot, folderAbs)
       const coverPath = folderAbs && path.join(folderAbs, rules.art.fileName)
-      if (coverPath && rules.art.saveFile && !existsSync(coverPath)) ops.push({ kind: 'art', to: coverPath, albumId: a.id, releaseId: release.id })
+      // Skip when the Cover Art Archive already told us there's no image, or this album would show up in every preview.
+      if (coverPath && rules.art.saveFile && !existsSync(coverPath) && !coverKnownMissing(release.id, rules.art.size)) ops.push({ kind: 'art', to: coverPath, albumId: a.id, releaseId: release.id })
       if (rules.leftovers !== 'leave' && folderAbs) {
         for (const l of leftoversFor(srcRoot, files)) {
           // Anything already in the album's final folder (including our own cover.jpg) stays put.
@@ -273,7 +298,7 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
   const rmdirs = new Set<string>()
   if (rules.removeEmptyFolders) {
     for (const d of sourceDirs) rmdirs.add(d)
-    for (const d of emptyDirs(destRoot)) rmdirs.add(d)
+    for (const d of await emptyDirs(destRoot)) rmdirs.add(d)
     for (const d of rmdirs) ops.push({ kind: 'rmdir', path: d })
   }
 

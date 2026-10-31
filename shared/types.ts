@@ -46,7 +46,9 @@ export interface TrackFile {
     year?: number
     mbReleaseId?: string
     mbRecordingId?: string
+    genres?: string[]
   }
+  hasArt?: boolean // embedded picture present
 }
 
 export interface ReleaseTrack {

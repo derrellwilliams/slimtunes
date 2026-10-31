@@ -168,9 +168,11 @@ async function syncDb(plan: ExecPlan, albumIds: string[], moved: Map<string, str
 }
 
 /** Runs left mid-way by a crash or restart can't still be running — mark them so they can be undone. */
-export function recoverInterruptedRuns() {
+/** Returns true when something was interrupted (the caller rescans so the library view matches the disk). */
+export function recoverInterruptedRuns(): boolean {
   const n = db.prepare("UPDATE runs SET status = 'failed' WHERE status IN ('applying', 'undoing')").run().changes
-  if (n) console.log(`  Marked ${n} interrupted run(s) as stopped. Rescan the library to refresh it.`)
+  if (n) console.log(`  ${n} run(s) were interrupted last time — marked as stopped (still undoable). Rescanning…`)
+  return n > 0
 }
 
 export function listRuns(): Run[] {

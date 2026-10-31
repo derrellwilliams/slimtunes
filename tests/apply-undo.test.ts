@@ -121,12 +121,17 @@ describe('re-running on an organized library', () => {
     writeFileSync(path.join(root, 'stale', '._junk'), '')
 
     await scanLibrary(root, noop)
-    expect(existsSync(path.join(root, 'stale'))).toBe(false) // scan removes empty folders
     accept()
     const plan = await buildPlan({ srcRoot: root, destRoot: root, rules: withArt, genres: async () => [] })
     expect(plan.ops.filter((o) => o.kind === 'tags')).toHaveLength(0)
     expect(plan.counts.leftovers).toBe(0)
     expect(plan.albums).toHaveLength(0)
+    // The empty folder is removed as a journaled step (so undo can bring it back), not silently during scan.
+    expect(plan.counts.rmdirs).toBe(1)
+    const runId = await applyPlan(plan, withArt, 'manual', noop)
+    expect(existsSync(path.join(root, 'stale'))).toBe(false)
+    await undoRun(runId, noop)
+    expect(existsSync(path.join(root, 'stale'))).toBe(true)
   })
 })
 

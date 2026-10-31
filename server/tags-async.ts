@@ -7,20 +7,25 @@ const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Err
 
 function getWorker() {
   if (worker) return worker
-  worker = new Worker(new URL('./tag-worker.ts', import.meta.url))
-  worker.unref()
-  worker.on('message', (m: { id: number; result?: unknown; error?: string }) => {
+  const w = new Worker(new URL('./tag-worker.ts', import.meta.url))
+  worker = w
+  w.unref()
+  w.on('message', (m: { id: number; result?: unknown; error?: string }) => {
     const p = pending.get(m.id)
     pending.delete(m.id)
     if (m.error) p?.reject(new Error(m.error))
     else p?.resolve(m.result)
   })
-  worker.on('error', (e) => {
+  const fail = (e: Error) => {
+    if (worker !== w) return // already replaced ('exit' follows 'error')
     for (const p of pending.values()) p.reject(e)
     pending.clear()
     worker = null
-  })
-  return worker
+  }
+  w.on('error', fail)
+  // A worker that dies without an 'error' (OOM, native crash, process.exit) would otherwise hang apply/undo forever.
+  w.on('exit', (code) => fail(new Error(`Tag worker stopped unexpectedly (exit code ${code})`)))
+  return w
 }
 
 function call<T>(msg: Record<string, unknown>): Promise<T> {

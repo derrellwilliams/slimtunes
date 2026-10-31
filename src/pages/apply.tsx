@@ -104,8 +104,10 @@ export function ApplyPage() {
           <DialogHeader>
             <DialogTitle>{plan?.albums.length ? `Organize ${plan.albums.length} albums?` : 'Clean up empty folders?'}</DialogTitle>
             <DialogDescription>
-              This moves {plan?.counts.moves.toLocaleString()} files and updates tags in {plan?.counts.tagWrites.toLocaleString()}. Every change is recorded, so you can undo the
-              whole run from History.
+              {plan?.albums.length
+                ? `This moves ${plan.counts.moves.toLocaleString()} files and updates tags in ${plan.counts.tagWrites.toLocaleString()}.`
+                : `This removes ${plan?.counts.rmdirs.toLocaleString()} empty folders.`}{' '}
+              Every change is recorded, so you can undo the whole run from History.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

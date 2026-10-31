@@ -10,7 +10,9 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "lint": "oxlint",
-    "fixtures": "node scripts/make-fixtures.ts"
+    "fixtures": "node scripts/make-fixtures.ts",
+    "service": "node scripts/service.ts",
+    "open": "node scripts/service.ts open"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

@@ -3,8 +3,6 @@ import { readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { parseFile } from 'music-metadata'
 import type { TrackFile } from '../shared/types.ts'
-import { removeEmptyDirs } from './cleanup.ts'
-import { config } from './config.ts'
 import { type AlbumRow, db, getAlbum, listAlbums, putAlbum, tx } from './db.ts'
 import { emit } from './events.ts'
 import { normalize } from './text.ts'
@@ -59,11 +57,13 @@ export async function readTrack(root: string, p: string, size: number): Promise<
     tags: {},
   }
   try {
-    const meta = await parseFile(p, { skipCovers: true, duration: false })
+    // Covers are read (not skipped) only so we know whether art is embedded.
+    const meta = await parseFile(p, { duration: false })
     const c = meta.common
     base.lossless = meta.format.lossless ?? base.lossless
     base.bitrate = meta.format.bitrate ? Math.round(meta.format.bitrate / 1000) : null
     base.duration = meta.format.duration ?? null
+    base.hasArt = !!c.picture?.length
     base.tags = {
       title: c.title,
       artist: c.artist,
@@ -74,6 +74,7 @@ export async function readTrack(root: string, p: string, size: number): Promise<
       year: c.year,
       mbReleaseId: c.musicbrainz_albumid,
       mbRecordingId: c.musicbrainz_recordingid,
+      genres: c.genre,
     }
   } catch {
     // Unreadable tags — keep the file, it'll be flagged as untagged.
@@ -118,7 +119,11 @@ export async function scanLibrary(root: string, progress: (done: number, total: 
   progress(0, 0, 'Finding music files…')
   const paths = await walk(root)
   const known = new Map(
-    (db.prepare('SELECT path, mtime, size FROM tracks WHERE root = ?').all(root) as { path: string; mtime: number; size: number }[]).map(
+    (
+      db
+        .prepare("SELECT path, mtime, size, json_extract(data, '$.hasArt') IS NOT NULL AS current FROM tracks WHERE root = ?")
+        .all(root) as { path: string; mtime: number; size: number; current: number }[]
+    ).map(
       (r) => [r.path, r],
     ),
   )
@@ -135,7 +140,8 @@ export async function scanLibrary(root: string, progress: (done: number, total: 
       const st = await stat(p).catch(() => null)
       if (st) {
         const prev = known.get(p)
-        if (!prev || prev.mtime !== st.mtimeMs || prev.size !== st.size) {
+        // Re-read changed files, and ones cached before we tracked embedded art.
+        if (!prev || prev.mtime !== st.mtimeMs || prev.size !== st.size || !prev.current) {
           const t = await readTrack(root, p, st.size)
           upsert.run(p, root, st.mtimeMs, st.size, JSON.stringify(t))
         }
@@ -149,7 +155,6 @@ export async function scanLibrary(root: string, progress: (done: number, total: 
     const del = db.prepare('DELETE FROM tracks WHERE path = ?')
     for (const p of known.keys()) if (!seen.has(p)) del.run(p)
   })
-  if (config.rules.removeEmptyFolders) removeEmptyDirs(root)
   regroup(root)
   return { tracks: paths.length }
 }

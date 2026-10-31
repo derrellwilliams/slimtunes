@@ -35,3 +35,11 @@ describe('splitFeatured', () => {
     expect(splitFeatured('Simon & Garfunkel')).toEqual({ main: 'Simon & Garfunkel', featured: null })
   })
 })
+
+describe('genreKey', () => {
+  it('treats packed ID3 genre lists as the same set', async () => {
+    const { genreKey } = await import('../server/planner.ts')
+    expect(genreKey(['Ambient', 'Post-Rock;Art Rock'])).toBe(genreKey(['Art Rock', 'Ambient', 'Post-Rock']))
+    expect(genreKey(['Rock'])).not.toBe(genreKey(['Pop']))
+  })
+})

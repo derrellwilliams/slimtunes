@@ -387,14 +387,27 @@ if (existsSync(dist)) {
   app.get('*', serveStatic({ path: path.relative(process.cwd(), path.join(dist, 'index.html')) }))
 }
 
-recoverInterruptedRuns()
+const interrupted = recoverInterruptedRuns()
 
-serve({ fetch: app.fetch, port: PORT, hostname: '127.0.0.1' }, () => {
+const openUrl = (url: string) =>
+  import('node:child_process').then(({ spawn }) => spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).unref())
+
+const server = serve({ fetch: app.fetch, port: PORT, hostname: '127.0.0.1' }, () => {
   const uiPort = DEV ? 5173 : PORT
   const url = `http://127.0.0.1:${uiPort}/?t=${config.token}`
   console.log(`\n  SlimTunes is running → ${url}\n`)
-  if (process.env.SLIMTUNES_OPEN === '1') {
-    import('node:child_process').then(({ spawn }) => spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).unref())
-  }
+  if (process.env.SLIMTUNES_OPEN === '1') void openUrl(url)
   restartInbox()
+  // After a crash mid-apply, files moved but the database didn't catch up — rescan so the UI matches the disk.
+  const root = config.settings.libraryRoot
+  if (interrupted && root && existsSync(root)) startJob('scan', (p) => scanLibrary(root, p))
+})
+
+// Already running (e.g. as a background service)? Just open it instead of failing.
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code !== 'EADDRINUSE') throw err
+  const url = `http://127.0.0.1:${PORT}/?t=${config.token}`
+  console.log(`\n  SlimTunes is already running → ${url}\n`)
+  if (process.env.SLIMTUNES_OPEN === '1') void openUrl(url).then(() => process.exit(0))
+  else process.exit(0)
 })

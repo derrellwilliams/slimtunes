@@ -31,6 +31,13 @@ npm run build
 npm start          # opens http://127.0.0.1:4747/?t=<private key>
 ```
 
+To keep it running in the background on macOS (starts at login, restarts if it crashes):
+
+```sh
+npm run service -- install    # or: uninstall | restart | status
+npm run open                  # opens SlimTunes in your browser
+```
+
 For development: `npm run dev` (API on :4747, UI on :5173, with the link printed in the terminal).
 
 To try it on a fake messy library: `npm run fixtures -- /tmp/slimtunes-demo`, then point SlimTunes at that folder.
