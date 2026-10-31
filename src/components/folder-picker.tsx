@@ -11,7 +11,7 @@ interface Listing {
   path: string
   parent: string | null
   dirs: string[]
-  places: { name: string; path: string }[]
+  places: { name: string; path: string; kind: 'home' | 'music' | 'drive' }[]
 }
 
 export function FolderPicker({
@@ -43,11 +43,13 @@ export function FolderPicker({
         </DialogHeader>
         <div className="grid grid-cols-[160px_1fr] gap-4">
           <nav className="flex flex-col gap-0.5 text-sm">
-            {data?.places.map((p) => {
-              const Icon = p.name === 'Home' ? Home : p.name === 'Music' ? Music : HardDrive
+            {data?.places.map((p, i) => {
+              const Icon = p.kind === 'home' ? Home : p.kind === 'music' ? Music : HardDrive
+              const firstDrive = p.kind === 'drive' && data.places[i - 1]?.kind !== 'drive'
               return (
+                <div key={p.path}>
+                {firstDrive && <div className="px-2 pt-3 pb-1 text-xs text-muted-foreground/70">Drives</div>}
                 <button
-                  key={p.path}
                   onClick={() => setPath(p.path)}
                   className={cn(
                     'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -57,6 +59,7 @@ export function FolderPicker({
                   <Icon className="size-4" />
                   <span className="truncate">{p.name}</span>
                 </button>
+                </div>
               )
             })}
           </nav>
@@ -79,7 +82,11 @@ export function FolderPicker({
             </div>
             <ScrollArea className="h-72 rounded-lg border">
               <div className="p-1">
-                {error && <p className="p-3 text-sm text-destructive">{error.message}</p>}
+                {error && (
+                  <p className="p-3 text-sm text-destructive">
+                    {error.status ? error.message : 'Can’t reach SlimTunes. Make sure it’s still running in Terminal (npm start), then try again.'}
+                  </p>
+                )}
                 {data?.dirs.length === 0 && <p className="p-3 text-sm text-muted-foreground">No folders in here.</p>}
                 {data?.dirs.map((d) => (
                   <button

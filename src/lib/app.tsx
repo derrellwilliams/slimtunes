@@ -9,6 +9,7 @@ const ROUTES: Route[] = ['library', 'rules', 'review', 'apply', 'history', 'sett
 interface Ctx {
   state: PublicState | null
   authError: boolean
+  offline: boolean
   reload: () => Promise<void>
   route: Route
   param: string | null
@@ -28,6 +29,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { data, error, reload } = useApi<PublicState>('/state', (e) => e.type === 'state' || e.type === 'albums' || (e.type === 'job' && e.job?.status !== 'running'))
   const [{ route, param }, setRoute] = useState(readRoute)
   const [scope, setScope] = useState<Scope>('library')
+  const offline = !!error && !error.status
+  // Keep retrying while the server is unreachable (stopped, restarting, or busy).
+  useEffect(() => {
+    if (!offline) return
+    const t = setInterval(() => void reload(), 3000)
+    return () => clearInterval(t)
+  }, [offline, reload])
   useEffect(() => {
     const on = () => setRoute(readRoute())
     window.addEventListener('hashchange', on)
@@ -38,7 +46,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.scrollTo({ top: 0 })
   }
   return (
-    <AppCtx.Provider value={{ state: data, authError: error?.status === 401, reload, route, param, go, scope, setScope }}>{children}</AppCtx.Provider>
+    <AppCtx.Provider value={{ state: data, authError: error?.status === 401, offline, reload, route, param, go, scope, setScope }}>{children}</AppCtx.Provider>
   )
 }
 

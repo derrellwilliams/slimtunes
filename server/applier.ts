@@ -4,12 +4,13 @@ import type { Rules, Run } from '../shared/types.ts'
 import { type AlbumRow, db, getAlbum, putAlbum, tx } from './db.ts'
 import { emit } from './events.ts'
 import { getCover } from './coverart.ts'
+import { isJunk } from './cleanup.ts'
 import type { ExecPlan } from './planner.ts'
 import { assertInside, isInside } from './safepath.ts'
 import { readTrack, regroup } from './scanner.ts'
-import { restoreTags, snapshotTags, type TagSnapshot, writeTags } from './tagger.ts'
+import type { TagSnapshot } from './tagger.ts'
+import { restoreTags, snapshotTags, writeTags } from './tags-async.ts'
 
-const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini'])
 
 class Journal {
   private seq = 0
@@ -57,7 +58,7 @@ function pruneEmpty(dir: string, stopAt: string, j: Journal) {
     } catch {
       return
     }
-    if (entries.some((e) => !JUNK.has(e))) return
+    if (entries.some((e) => !isJunk(e))) return
     for (const e of entries) rmSync(path.join(d, e), { force: true })
     rmdirSync(d)
     j.log('rmdir', d)
@@ -98,9 +99,9 @@ export async function applyPlan(plan: ExecPlan, rules: Rules, source: Run['sourc
         assertInside(srcRoot, op.path)
         const values = plan.tagValues[op.path]
         if (!values) continue
-        const snap = snapshotTags(op.path)
+        const snap = await snapshotTags(op.path)
         j.log('tags', op.path, JSON.stringify(snap))
-        writeTags(op.path, values, rules.art.embed ? await coverFor(op.albumId) : null)
+        await writeTags(op.path, values, rules.art.embed ? await coverFor(op.albumId) : null)
       } else if (op.kind === 'move') {
         assertInside(srcRoot, op.from)
         assertInside(destRoot, op.to)
@@ -117,7 +118,7 @@ export async function applyPlan(plan: ExecPlan, rules: Rules, source: Run['sourc
         writeFileSync(op.to, img)
         j.log('create', op.to)
       } else if (op.kind === 'rmdir') {
-        pruneEmpty(op.path, srcRoot, j)
+        pruneEmpty(op.path, isInside(srcRoot, op.path) ? srcRoot : destRoot, j)
       }
     }
     await syncDb(plan, albumIds, moved)
@@ -166,6 +167,12 @@ async function syncDb(plan: ExecPlan, albumIds: string[], moved: Map<string, str
   })
 }
 
+/** Runs left mid-way by a crash or restart can't still be running — mark them so they can be undone. */
+export function recoverInterruptedRuns() {
+  const n = db.prepare("UPDATE runs SET status = 'failed' WHERE status IN ('applying', 'undoing')").run().changes
+  if (n) console.log(`  Marked ${n} interrupted run(s) as stopped. Rescan the library to refresh it.`)
+}
+
 export function listRuns(): Run[] {
   return (
     db
@@ -201,12 +208,12 @@ export async function undoRun(runId: number, progress: (d: number, t: number, m?
         moveFile(e.b!, e.a)
         restoredPaths.set(e.b!, e.a)
       } else if (e.op === 'tags') {
-        if (existsSync(e.a)) restoreTags(e.a, JSON.parse(e.b!) as TagSnapshot)
+        if (existsSync(e.a)) await restoreTags(e.a, JSON.parse(e.b!) as TagSnapshot)
       } else if (e.op === 'create') {
         rmSync(e.a, { force: true })
       } else if (e.op === 'mkdir') {
         try {
-          for (const f of readdirSync(e.a)) if (JUNK.has(f)) rmSync(path.join(e.a, f))
+          for (const f of readdirSync(e.a)) if (isJunk(f)) rmSync(path.join(e.a, f))
           rmdirSync(e.a)
         } catch {
           /* not empty — the user put something there */

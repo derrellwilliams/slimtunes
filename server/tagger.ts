@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { ByteVector, File, Picture, PictureType, TagTypes } from 'node-taglib-sharp'
-import { BLOB_DIR } from './config.ts'
+import { BLOB_DIR } from './paths.ts'
 
 export interface TagValues {
   title: string

@@ -21,6 +21,7 @@ export type IssueKind =
   | 'duplicate-album' // another album in the library maps to the same release group
   | 'duplicate-files' // two files map to the same track
   | 'untagged'
+  | 'single-file' // whole album in one file + .cue
 
 export interface Issue {
   kind: IssueKind

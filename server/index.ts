@@ -8,7 +8,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import type { AlbumDetail, AlbumSummary, PublicState, Release, Rules, ServerEvent } from '../shared/types.ts'
 import { hasFpcalc } from './acoustid.ts'
-import { applyPlan, listRuns, undoRun } from './applier.ts'
+import { applyPlan, listRuns, recoverInterruptedRuns, undoRun } from './applier.ts'
 import { config, DEFAULT_RULES, mergeRules, save } from './config.ts'
 import { type AlbumRow, albumFiles, db, getAlbum, listAlbums, putAlbum } from './db.ts'
 import { bus, currentJob, emit, HttpError, startJob } from './events.ts'
@@ -98,12 +98,27 @@ api.get('/fs', (c) => {
     .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
     .map((d) => d.name)
     .sort((a, b) => a.localeCompare(b))
-  const places = [{ name: 'Home', path: homedir() }]
-  if (existsSync('/Volumes')) for (const v of readdirSync('/Volumes')) places.push({ name: v, path: path.join('/Volumes', v) })
+  const places: { name: string; path: string; kind: 'home' | 'music' | 'drive' }[] = [{ name: 'Home', path: homedir(), kind: 'home' }]
   const music = path.join(homedir(), 'Music')
-  if (existsSync(music)) places.splice(1, 0, { name: 'Music', path: music })
+  if (existsSync(music)) places.push({ name: 'Music', path: music, kind: 'music' })
+  places.push(...listDrives().map((d) => ({ ...d, kind: 'drive' as const })))
   return c.json({ path: p, parent: path.dirname(p) === p ? null : path.dirname(p), dirs, places })
 })
+
+/** External, USB and network drives mounted under /Volumes (skips the boot disk alias and system volumes). */
+function listDrives(): { name: string; path: string }[] {
+  if (!existsSync('/Volumes')) return []
+  return readdirSync('/Volumes', { withFileTypes: true })
+    .filter((d) => !d.isSymbolicLink() && !d.name.startsWith('.') && !['Recovery', 'Preboot', 'VM', 'Update'].includes(d.name))
+    .map((d) => ({ name: d.name, path: path.join('/Volumes', d.name) }))
+    .filter((d) => {
+      try {
+        return statSync(d.path).isDirectory()
+      } catch {
+        return false
+      }
+    })
+}
 
 api.post('/library', async (c) => {
   const { root } = await c.req.json<{ root: string }>()
@@ -371,6 +386,8 @@ if (existsSync(dist)) {
   app.use('/*', serveStatic({ root: path.relative(process.cwd(), dist) }))
   app.get('*', serveStatic({ path: path.relative(process.cwd(), path.join(dist, 'index.html')) }))
 }
+
+recoverInterruptedRuns()
 
 serve({ fetch: app.fetch, port: PORT, hostname: '127.0.0.1' }, () => {
   const uiPort = DEV ? 5173 : PORT

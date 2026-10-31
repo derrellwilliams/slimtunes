@@ -3,13 +3,18 @@ import path from 'node:path'
 import type { Plan, PlanAlbum, PlanOp, Release, ReleaseTrack, Rules, TrackFile } from '../shared/types.ts'
 import { albumFiles, db, listAlbums } from './db.ts'
 import { AUDIO_EXT, ext } from './scanner.ts'
+import { emptyDirs, isJunk } from './cleanup.ts'
 import { renderTemplate, type TemplateValues } from './template.ts'
 import { year } from './text.ts'
 import type { TagValues } from './tagger.ts'
 
 export const VARIOUS_ARTISTS_ID = '89ad4ac3-39f7-470e-963a-56509c546377'
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'])
-const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini'])
+
+/** A whole album ripped to one file with a .cue sheet. SlimTunes can't split it, so it's filed as-is. */
+export function isSingleFileRip(files: TrackFile[], release: Release) {
+  return files.length === 1 && release.tracks.length > 2
+}
 
 export function isCompilation(r: Release) {
   return r.artistIds.includes(VARIOUS_ARTISTS_ID)
@@ -142,7 +147,7 @@ function leftoversFor(srcRoot: string, files: TrackFile[]) {
       continue
     }
     for (const e of entries) {
-      if (!e.isFile() || e.name.startsWith('.') || JUNK.has(e.name) || AUDIO_EXT.has(ext(e.name))) continue
+      if (!e.isFile() || e.name.startsWith('.') || isJunk(e.name) || AUDIO_EXT.has(ext(e.name))) continue
       out.push({ path: path.join(dir, e.name), dir, shared: n > 1 })
     }
   }
@@ -192,7 +197,8 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
       pa.destFolder = path.join('_duplicates', a.folder)
       for (const f of files) move(f.path, toDupes(f.path), 'duplicates')
       for (const l of leftoversFor(srcRoot, files)) if (!l.shared) move(l.path, toDupes(l.path), 'leftovers')
-    } else if ((a.status === 'matched' || a.status === 'accepted') && a.release && a.alignment) {
+    } else if ((a.status === 'matched' || a.status === 'accepted' || a.status === 'applied') && a.release && a.alignment) {
+      // Organized albums are re-checked too: missing covers come back, rule changes apply, and anything already right is skipped.
       const release = a.release
       const genres = rules.genres.enabled ? await o.genres(release).catch(() => []) : []
       const byTrack = new Map(release.tracks.map((t) => [t.id, t]))
@@ -204,6 +210,14 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
           if (rules.duplicates === 'move-to-duplicates') move(f.path, toDupes(f.path), 'duplicates')
           continue
         }
+        if (isSingleFileRip(files, release)) {
+          // One file holding the whole album (+ .cue): file it in the album folder under its own name, tags untouched.
+          const first = release.tracks[0]
+          const albumDir = path.dirname(path.join(destRoot, destFor(release, first, rules)))
+          folderAbs = rules.multiDisc === 'subfolder' && release.discCount > 1 ? path.dirname(albumDir) : albumDir
+          move(f.path, path.join(folderAbs, path.basename(f.path)), 'moves')
+          continue
+        }
         const track = byTrack.get(aligned.get(f.path) ?? '')
         if (!track) continue
         const dest = path.join(destRoot, `${destFor(release, track, rules)}.${f.format}`)
@@ -213,20 +227,26 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
         const v = tagValuesFor(release, track, rules, genres)
         tagValues[f.path] = v
         const ch = changes(f, v)
-        pa.tagChanges += Object.keys(ch).length ? 1 : 0
-        ops.push({ kind: 'tags', path: f.path, albumId: a.id, changes: ch })
+        // Already organized and tagged with this exact release: skip the (slow) rewrite.
+        const upToDate = !Object.keys(ch).length && f.tags.mbReleaseId === release.id && f.tags.mbRecordingId === track.recordingId
+        if (!upToDate) {
+          pa.tagChanges += Object.keys(ch).length ? 1 : 0
+          ops.push({ kind: 'tags', path: f.path, albumId: a.id, changes: ch })
+        }
         move(f.path, dest, 'moves')
       }
       // Files that didn't map to a track ride along with the album under their current names.
       for (const f of files) {
-        if (aligned.get(f.path) || a.duplicateFiles.includes(f.path) || !folderAbs) continue
+        if (aligned.get(f.path) || a.duplicateFiles.includes(f.path) || !folderAbs || isSingleFileRip(files, release)) continue
         move(f.path, path.join(folderAbs, path.basename(f.path)), 'moves')
       }
       pa.destFolder = path.relative(destRoot, folderAbs)
-      if (folderAbs && (rules.art.saveFile || rules.art.embed))
-        ops.push({ kind: 'art', to: rules.art.saveFile ? path.join(folderAbs, rules.art.fileName) : '', albumId: a.id, releaseId: release.id })
+      const coverPath = folderAbs && path.join(folderAbs, rules.art.fileName)
+      if (coverPath && rules.art.saveFile && !existsSync(coverPath)) ops.push({ kind: 'art', to: coverPath, albumId: a.id, releaseId: release.id })
       if (rules.leftovers !== 'leave' && folderAbs) {
         for (const l of leftoversFor(srcRoot, files)) {
+          // Anything already in the album's final folder (including our own cover.jpg) stays put.
+          if (path.resolve(l.dir) === path.resolve(folderAbs)) continue
           const isImage = IMAGE_EXT.has(ext(l.path))
           const withAlbum = rules.leftovers === 'move-with-album' && !l.shared && !(isImage && rules.art.saveFile)
           move(l.path, withAlbum ? path.join(folderAbs, path.relative(l.dir, l.path)) : toLeftovers(l.path), 'leftovers')
@@ -245,10 +265,17 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
       pa.destFolder = path.dirname(renderTemplate(rules.singlesTemplate, { artist: a.artist, albumartist: a.artist, title: 'x' }))
     } else continue
 
-    if (pa.moves.length || pa.tagChanges || pa.duplicates.length || ops.some((op) => op.kind === 'art' && op.albumId === a.id)) planAlbums.push(pa)
+    if (pa.moves.length || pa.leftovers.length || pa.duplicates.length || ops.some((op) => (op.kind === 'art' || op.kind === 'tags') && op.albumId === a.id))
+      planAlbums.push(pa)
   }
 
-  if (rules.removeEmptyFolders) for (const d of sourceDirs) ops.push({ kind: 'rmdir', path: d })
+  // Source folders emptied by this run, plus any empty folders left over from earlier or interrupted runs.
+  const rmdirs = new Set<string>()
+  if (rules.removeEmptyFolders) {
+    for (const d of sourceDirs) rmdirs.add(d)
+    for (const d of emptyDirs(destRoot)) rmdirs.add(d)
+    for (const d of rmdirs) ops.push({ kind: 'rmdir', path: d })
+  }
 
   return {
     createdAt: Date.now(),
@@ -261,7 +288,7 @@ export async function buildPlan(o: BuildPlanOptions): Promise<ExecPlan> {
       moves: planAlbums.reduce((n, p) => n + p.moves.length, 0),
       tagWrites: ops.filter((op) => op.kind === 'tags').length,
       art: ops.filter((op) => op.kind === 'art').length,
-      rmdirs: sourceDirs.size,
+      rmdirs: rmdirs.size,
       duplicates: planAlbums.reduce((n, p) => n + p.duplicates.length, 0),
       leftovers: planAlbums.reduce((n, p) => n + p.leftovers.length, 0),
     },

@@ -4,6 +4,7 @@ import { fingerprint, lookup } from './acoustid.ts'
 import { type AlbumRow, albumFiles, getAlbum, listAlbums, putAlbum } from './db.ts'
 import { emit } from './events.ts'
 import { getRelease, searchRecordings, searchReleases } from './musicbrainz.ts'
+import { isSingleFileRip } from './planner.ts'
 import { normalize, similarity, titleFromFilename, year } from './text.ts'
 
 const FINAL = new Set(['leave', 'applied', 'accepted', 'skipped', 'singles', 'duplicate'])
@@ -170,6 +171,16 @@ function applyResult(album: AlbumRow, candidates: Awaited<ReturnType<typeof eval
   album.alignment = best.alignment
   album.issues = [...base, ...(best.full && best.alignment ? issuesFor(best.full, best.alignment, best.confidence, rules) : [])]
   album.status = best.confidence >= rules.autoAcceptThreshold && best.full ? 'matched' : 'review'
+  if (best.full && isSingleFileRip(albumFiles(album.id), best.full)) {
+    album.status = 'review'
+    album.issues = [
+      ...base,
+      {
+        kind: 'single-file',
+        message: `This album is one big file (usually with a .cue sheet), not ${best.full.tracks.length} separate tracks. Confirming files it in the album folder under its current name; it won’t be split or retagged.`,
+      },
+    ]
+  }
 }
 
 export async function matchAlbum(root: string, id: string, rules: Rules, opts: { force?: boolean; query?: { artist: string; album: string } } = {}) {

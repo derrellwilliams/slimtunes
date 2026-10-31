@@ -10,6 +10,12 @@ if (fromUrl) {
 }
 export const token = () => localStorage.getItem(TOKEN_KEY) ?? ''
 
+/** Accepts the bare key or the whole startup link. */
+export function setToken(input: string) {
+  const t = input.trim().match(/[?&]t=([^&#\s]+)/)?.[1] ?? input.trim()
+  localStorage.setItem(TOKEN_KEY, t)
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {

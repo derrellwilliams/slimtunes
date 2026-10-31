@@ -45,7 +45,7 @@ export function ApplyPage() {
               <Button variant="outline" disabled={building || applying} onClick={() => void build()}>
                 <RefreshCw /> Rebuild
               </Button>
-              <Button disabled={!plan.albums.length || building || applying} onClick={() => setConfirm(true)}>
+              <Button disabled={(!plan.albums.length && !plan.counts.rmdirs) || building || applying} onClick={() => setConfirm(true)}>
                 <Play /> Apply changes
               </Button>
             </>
@@ -72,7 +72,7 @@ export function ApplyPage() {
             </>
           )}
         </div>
-      ) : !plan.albums.length ? (
+      ) : !plan.albums.length && !plan.counts.rmdirs ? (
         <div className="rounded-xl border border-dashed py-16 text-center text-sm text-muted-foreground">
           Nothing to do. Match or confirm some albums first.
           <div className="mt-4">
@@ -102,7 +102,7 @@ export function ApplyPage() {
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Organize {plan?.albums.length} albums?</DialogTitle>
+            <DialogTitle>{plan?.albums.length ? `Organize ${plan.albums.length} albums?` : 'Clean up empty folders?'}</DialogTitle>
             <DialogDescription>
               This moves {plan?.counts.moves.toLocaleString()} files and updates tags in {plan?.counts.tagWrites.toLocaleString()}. Every change is recorded, so you can undo the
               whole run from History.

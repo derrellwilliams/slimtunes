@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto'
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { parseFile } from 'music-metadata'
 import type { TrackFile } from '../shared/types.ts'
+import { removeEmptyDirs } from './cleanup.ts'
+import { config } from './config.ts'
 import { type AlbumRow, db, getAlbum, listAlbums, putAlbum, tx } from './db.ts'
 import { emit } from './events.ts'
 import { normalize } from './text.ts'
@@ -12,6 +14,16 @@ const LOSSLESS = new Set(['flac', 'wav', 'aif', 'aiff', 'ape', 'wv'])
 /** Folders SlimTunes writes into; never scanned as library content. */
 export const SPECIAL_DIRS = new Set(['_duplicates', '_leftovers'])
 
+/** Temp copies the tagger writes before swapping them in. Left behind only if SlimTunes was stopped mid-write. */
+const TEMP_FILE = /^\.slimtunes-[0-9a-f]{12}\.[a-z0-9]+$/i
+
+async function removeStaleTemp(p: string) {
+  const st = await stat(p).catch(() => null)
+  if (!st || Date.now() - st.mtimeMs < 10 * 60 * 1000) return // might still be in use
+  await rm(p, { force: true })
+  await rm(path.join(path.dirname(p), `._${path.basename(p)}`), { force: true }) // macOS metadata twin on FAT/exFAT
+}
+
 export async function walk(dir: string, out: string[] = []): Promise<string[]> {
   let entries
   try {
@@ -20,6 +32,7 @@ export async function walk(dir: string, out: string[] = []): Promise<string[]> {
     return out
   }
   for (const e of entries) {
+    if (TEMP_FILE.test(e.name)) await removeStaleTemp(path.join(dir, e.name))
     if (e.name.startsWith('.')) continue
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
@@ -136,6 +149,7 @@ export async function scanLibrary(root: string, progress: (done: number, total: 
     const del = db.prepare('DELETE FROM tracks WHERE path = ?')
     for (const p of known.keys()) if (!seen.has(p)) del.run(p)
   })
+  if (config.rules.removeEmptyFolders) removeEmptyDirs(root)
   regroup(root)
   return { tracks: paths.length }
 }

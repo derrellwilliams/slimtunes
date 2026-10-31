@@ -1,15 +1,11 @@
 import { randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { Rules, Settings } from '../shared/types.ts'
+import { DATA_DIR } from './paths.ts'
 
-export const DATA_DIR = process.env.SLIMTUNES_HOME ?? path.join(homedir(), '.slimtunes')
-export const BLOB_DIR = path.join(DATA_DIR, 'blobs')
-export const ART_DIR = path.join(DATA_DIR, 'art')
+export { ART_DIR, BLOB_DIR, DATA_DIR } from './paths.ts'
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json')
-
-for (const dir of [DATA_DIR, BLOB_DIR, ART_DIR]) mkdirSync(dir, { recursive: true, mode: 0o700 })
 
 export const DEFAULT_RULES: Rules = {
   folderTemplate: '{albumartist}/{album} ({year})',

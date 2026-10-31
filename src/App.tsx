@@ -1,8 +1,11 @@
-import { FolderOpen, History, LayoutGrid, ListChecks, Play, Settings2, SlidersHorizontal } from 'lucide-react'
-import type { ComponentType } from 'react'
+import { FolderOpen, History, Loader2, LayoutGrid, ListChecks, Play, Settings2, SlidersHorizontal } from 'lucide-react'
+import { type ComponentType, useState } from 'react'
 import { JobBar } from '@/components/job-bar'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { setToken } from '@/lib/api'
 import { AppProvider, type Route, useApp } from '@/lib/app'
 import { cn } from '@/lib/utils'
 import { ApplyPage } from '@/pages/apply'
@@ -67,14 +70,16 @@ function Sidebar() {
 }
 
 function Main() {
-  const { route, state, authError } = useApp()
-  if (authError)
+  const { route, state, authError, offline } = useApp()
+  if (authError) return <Unlock />
+  if (offline)
     return (
       <div className="flex h-svh items-center justify-center p-8 text-center">
         <div className="max-w-sm space-y-2">
-          <h1 className="text-lg font-semibold">Open SlimTunes from the terminal link</h1>
+          <Loader2 className="mx-auto mb-3 size-5 animate-spin text-muted-foreground" />
+          <h1 className="text-lg font-semibold">Can’t reach SlimTunes</h1>
           <p className="text-sm text-muted-foreground">
-            For your safety, SlimTunes only accepts requests from the link it printed when it started (it contains a private key).
+            It may have stopped. Start it again in Terminal with <code className="rounded bg-muted px-1">npm start</code> — this page reconnects on its own.
           </p>
         </div>
       </div>
@@ -90,6 +95,34 @@ function Main() {
           <Page />
         </div>
       </main>
+    </div>
+  )
+}
+
+function Unlock() {
+  const [value, setValue] = useState('')
+  return (
+    <div className="flex h-svh items-center justify-center p-8">
+      <form
+        className="w-full max-w-sm space-y-4 text-center"
+        onSubmit={(e) => {
+          e.preventDefault()
+          setToken(value)
+          location.reload()
+        }}
+      >
+        <img src="/favicon.svg" alt="" className="mx-auto size-10 rounded-xl ring-1 ring-border" />
+        <div className="space-y-1.5">
+          <h1 className="text-lg font-semibold">Unlock SlimTunes</h1>
+          <p className="text-sm text-muted-foreground">
+            Paste the link SlimTunes printed when it started. It contains a private key so other websites can’t touch your files.
+          </p>
+        </div>
+        <Input autoFocus placeholder="http://127.0.0.1:4747/?t=…" value={value} onChange={(e) => setValue(e.target.value)} className="font-mono text-xs" />
+        <Button type="submit" className="w-full" disabled={!value.trim()}>
+          Unlock
+        </Button>
+      </form>
     </div>
   )
 }

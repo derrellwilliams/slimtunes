@@ -100,3 +100,54 @@ describe('rescan after apply, then undo', () => {
     expect(tree(root)).toEqual(['x/1.mp3'])
   })
 })
+
+describe('re-running on an organized library', () => {
+  it('keeps cover.jpg in place, skips redundant tag writes, and sweeps empty folders', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'slimtunes-lib-'))
+    const withArt = { ...rules, art: { ...rules.art, saveFile: true } }
+    writeAudio(path.join(root, 'old', '1.mp3'), 100, { title: 'A', artist: 'Band', album: 'Record', track: 1 })
+    await scanLibrary(root, noop)
+    const rel = release([track(1, 1, 'A', 100, 'Band')], { id: '33333333-3333-3333-3333-333333333333', artist: 'Band', title: 'Record' })
+    const accept = () => {
+      const [a] = listAlbums(root)
+      putAlbum(root, { ...a, status: 'accepted', release: rel, chosen: rel, alignment: align(albumFiles(a.id), rel) })
+    }
+    accept()
+    await applyPlan(await buildPlan({ srcRoot: root, destRoot: root, rules: withArt, genres: async () => [] }), withArt, 'manual', noop)
+    // No network in tests, so pretend the cover was saved, and leave an empty folder with macOS clutter behind.
+    writeFileSync(path.join(root, 'Band/Record (2001)/cover.jpg'), 'img')
+    const { mkdirSync } = await import('node:fs')
+    mkdirSync(path.join(root, 'stale'))
+    writeFileSync(path.join(root, 'stale', '._junk'), '')
+
+    await scanLibrary(root, noop)
+    expect(existsSync(path.join(root, 'stale'))).toBe(false) // scan removes empty folders
+    accept()
+    const plan = await buildPlan({ srcRoot: root, destRoot: root, rules: withArt, genres: async () => [] })
+    expect(plan.ops.filter((o) => o.kind === 'tags')).toHaveLength(0)
+    expect(plan.counts.leftovers).toBe(0)
+    expect(plan.albums).toHaveLength(0)
+  })
+})
+
+describe('single-file album rips', () => {
+  it('files the one big file and its .cue in the album folder without retagging', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'slimtunes-lib-'))
+    writeAudio(path.join(root, 'Glass - 1994 [FLAC]', 'whole album.mp3'), 300, { album: 'Music With Changing Parts', artist: 'Philip Glass' })
+    writeFileSync(path.join(root, 'Glass - 1994 [FLAC]', 'whole album.cue'), 'cue')
+    await scanLibrary(root, noop)
+    const [a] = listAlbums(root)
+    const rel = release([track(1, 1, 'Part 1', 100, 'Philip Glass'), track(1, 2, 'Part 2', 100, 'Philip Glass'), track(1, 3, 'Part 3', 100, 'Philip Glass')], {
+      id: '44444444-4444-4444-4444-444444444444',
+      artist: 'Philip Glass',
+      title: 'Music With Changing Parts',
+      date: '1994',
+      originalDate: '1994',
+    })
+    putAlbum(root, { ...a, status: 'accepted', release: rel, chosen: rel, alignment: align(albumFiles(a.id), rel) })
+    const plan = await buildPlan({ srcRoot: root, destRoot: root, rules, genres: async () => [] })
+    expect(plan.ops.filter((o) => o.kind === 'tags')).toHaveLength(0)
+    await applyPlan(plan, rules, 'manual', noop)
+    expect(tree(root).sort()).toEqual(['Philip Glass/Music With Changing Parts (1994)/whole album.cue', 'Philip Glass/Music With Changing Parts (1994)/whole album.mp3'])
+  })
+})
