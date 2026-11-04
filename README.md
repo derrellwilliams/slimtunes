@@ -1,7 +1,6 @@
 # SlimTunes
 
-<img width="1560" height="921" alt="Screenshot 2026-10-30 at 3 41 49 PM" src="https://github.com/user-attachments/assets/4e8bccb0-d7b9-4d13-a970-ee2081b9dea4" />
-<img width="1551" height="927" alt="Screenshot 2026-10-30 at 3 43 14 PM" src="https://github.com/user-attachments/assets/3cef759b-324f-40aa-9b3c-ea3f3702c0d0" />
+<img width="1649" height="1075" alt="Screenshot 2026-11-03 at 8 06 06 PM" src="https://github.com/user-attachments/assets/1b9a27fd-0035-40d0-a4dc-f8dc3eb1e778" />
 
 
 Clean up your music library, match it to [MusicBrainz](https://musicbrainz.org), and organize it into one folder per artist and album, with album art for everything.
