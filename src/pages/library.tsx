@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api, useApi } from '@/lib/api'
 import { useApp } from '@/lib/app'
+import { needsReview, readyToOrganize } from '@/lib/stats'
 import { cn } from '@/lib/utils'
 
 const FILTERS: { key: string; label: string; statuses: AlbumStatus[] | null }[] = [
@@ -40,7 +41,7 @@ export function LibraryPage() {
   if (!state?.libraryRoot) {
     return (
       <div className="flex min-h-[70svh] flex-col items-center justify-center text-center">
-        <div className="mb-6 flex size-14 items-center justify-center rounded-2xl border bg-card">
+        <div className="mb-6 flex size-14 items-center justify-center rounded-xl border bg-card/40">
           <FolderSearch className="size-6 text-muted-foreground" />
         </div>
         <h1 className="text-3xl font-semibold tracking-tight">Point SlimTunes at your music</h1>
@@ -57,8 +58,8 @@ export function LibraryPage() {
   }
 
   const s = state.stats.byStatus
-  const ready = (s.matched ?? 0) + (s.accepted ?? 0) + (s.singles ?? 0) + (s.duplicate ?? 0)
-  const needs = (s.review ?? 0) + (s.unmatched ?? 0)
+  const ready = readyToOrganize(s)
+  const needs = needsReview(s)
   const pending = s.pending ?? 0
 
   return (
@@ -82,8 +83,8 @@ export function LibraryPage() {
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Tracks" value={state.stats.tracks} />
         <Stat label="Albums" value={state.stats.albums} />
-        <Stat label="Ready to organize" value={ready} tone="text-emerald-400" />
-        <Stat label="Needs you" value={needs} tone={needs ? 'text-amber-400' : undefined} />
+        <Stat label="Ready to organize" value={ready} tone="text-success" />
+        <Stat label="Needs you" value={needs} tone={needs ? 'text-warning' : undefined} />
       </div>
 
       <NextStep
@@ -147,9 +148,8 @@ function NextStep(p: {
     action = null
   }
   return (
-    <div className="relative mb-10 overflow-hidden rounded-xl border bg-gradient-to-br from-card to-card/20 p-6">
-      <div className="pointer-events-none absolute -top-24 -right-24 size-64 rounded-full bg-indigo-500/10 blur-3xl" />
-      <div className="relative flex flex-wrap items-center justify-between gap-4">
+    <div className="mb-10 rounded-xl border bg-card/40 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             <Sparkles className="size-3.5" /> Next step
@@ -197,18 +197,19 @@ function AlbumTable({ onOpen }: { onOpen: (a: AlbumSummary) => void }) {
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
+              aria-pressed={filter === f.key}
               className={cn(
-                'rounded-full px-3 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground',
+                'focus-ring rounded-full px-3 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground',
                 filter === f.key && 'bg-muted text-foreground',
               )}
             >
-              {f.label} <span className="ml-0.5 tabular-nums opacity-60">{counts[f.key]}</span>
+              {f.label} <span className="ml-0.5 tabular-nums text-muted-foreground">{counts[f.key]}</span>
             </button>
           ))}
         </div>
         <div className="relative w-64">
           <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search albums" value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" />
+          <Input aria-label="Search albums" placeholder="Search albums" value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" />
         </div>
       </div>
       <div className="overflow-hidden rounded-xl border">
@@ -216,7 +217,7 @@ function AlbumTable({ onOpen }: { onOpen: (a: AlbumSummary) => void }) {
           <button
             key={a.id}
             onClick={() => onOpen(a)}
-            className="grid w-full grid-cols-[40px_1fr_120px_110px] items-center gap-4 border-b px-4 py-2.5 text-left text-sm transition-colors last:border-b-0 hover:bg-muted/40"
+            className="focus-ring grid w-full grid-cols-[40px_1fr_120px_110px] items-center gap-4 border-b px-4 py-2.5 text-left text-sm transition-colors last:border-b-0 hover:bg-muted/40"
           >
             <AlbumCover releaseId={a.chosen?.id} className="size-10 rounded-md" />
             <div className="min-w-0">

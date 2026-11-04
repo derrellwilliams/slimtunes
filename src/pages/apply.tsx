@@ -37,8 +37,8 @@ export function ApplyPage() {
   return (
     <>
       <PageHeader
-        title="Preview & apply"
-        description="Exactly what will happen to your files. Nothing changes until you press Apply, and every run can be undone."
+        title="Ready"
+        description="Albums ready to organize, and exactly what will happen to their files. Nothing changes until you press Apply, and every run can be undone."
         actions={
           plan && (
             <>
@@ -144,11 +144,11 @@ function AlbumPlan({ a }: { a: PlanAlbum }) {
   ]
   return (
     <div className="border-b last:border-b-0">
-      <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-muted/40">
+      <button onClick={() => setOpen(!open)} aria-expanded={open} className="focus-ring flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-muted/40">
         <ChevronRight className={cn('size-4 text-muted-foreground transition-transform', open && 'rotate-90')} />
         <AlbumCover releaseId={a.releaseId} className="size-9 rounded-md" />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-[13px]">{a.destFolder}</div>
+          <div className="truncate font-mono text-sm">{a.destFolder}</div>
           <div className="truncate text-xs text-muted-foreground">
             {a.moves.length} files{a.tagChanges ? ` · ${a.tagChanges} tag updates` : ''}
             {a.leftovers.length ? ` · ${a.leftovers.length} extras` : ''}
@@ -157,14 +157,14 @@ function AlbumPlan({ a }: { a: PlanAlbum }) {
         </div>
       </button>
       {open && (
-        <ul className="space-y-1 bg-muted/20 px-12 py-3 font-mono text-[11.5px]">
+        <ul className="space-y-1 bg-muted/20 px-12 py-3 font-mono text-xs">
           {rows.map((r) => (
             <li key={r.from} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
               <span className="truncate text-muted-foreground" title={r.from}>
                 {base(r.from)}
               </span>
               <ArrowRight className="size-3 text-muted-foreground/50" />
-              <span className={cn('truncate', r.kind === 'duplicate' && 'text-orange-400', r.kind === 'extra' && 'text-muted-foreground')} title={r.to}>
+              <span className={cn('truncate', r.kind === 'duplicate' && 'text-duplicate', r.kind === 'extra' && 'text-muted-foreground')} title={r.to}>
                 {base(r.to)}
               </span>
             </li>

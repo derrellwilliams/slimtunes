@@ -48,11 +48,12 @@ export function FolderPicker({
               const firstDrive = p.kind === 'drive' && data.places[i - 1]?.kind !== 'drive'
               return (
                 <div key={p.path}>
-                {firstDrive && <div className="px-2 pt-3 pb-1 text-xs text-muted-foreground/70">Drives</div>}
+                {firstDrive && <div className="px-2 pt-3 pb-1 text-xs text-muted-foreground">Drives</div>}
                 <button
                   onClick={() => setPath(p.path)}
+                  aria-current={current === p.path ? 'location' : undefined}
                   className={cn(
-                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground',
+                    'focus-ring flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-muted-foreground hover:bg-muted hover:text-foreground',
                     current === p.path && 'bg-muted text-foreground',
                   )}
                 >
@@ -65,10 +66,11 @@ export function FolderPicker({
           </nav>
           <div className="flex min-w-0 flex-col gap-2">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon-sm" disabled={!data?.parent} onClick={() => data?.parent && setPath(data.parent)}>
+              <Button variant="ghost" size="icon-sm" aria-label="Up one folder" disabled={!data?.parent} onClick={() => data?.parent && setPath(data.parent)}>
                 <ChevronLeft />
               </Button>
               <Input
+                aria-label="Folder path"
                 value={typed ?? current}
                 onChange={(e) => setTyped(e.target.value)}
                 onKeyDown={(e) => {
@@ -91,9 +93,8 @@ export function FolderPicker({
                 {data?.dirs.map((d) => (
                   <button
                     key={d}
-                    onDoubleClick={() => setPath(`${current}/${d}`)}
                     onClick={() => setPath(`${current}/${d}`)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                    className="focus-ring flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
                   >
                     <Folder className="size-4 text-muted-foreground" />
                     <span className="truncate">{d}</span>

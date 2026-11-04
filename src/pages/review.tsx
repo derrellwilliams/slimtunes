@@ -55,8 +55,12 @@ export function ReviewPage() {
   }, [queue, id, index, param, go])
 
   const bulk = async () => {
-    const { accepted } = await api<{ accepted: number }>(`/albums/accept-all${q}`, { body: { min: 0.75 } })
-    toast.success(`Confirmed ${accepted} album${accepted === 1 ? '' : 's'}`)
+    try {
+      const { accepted } = await api<{ accepted: number }>(`/albums/accept-all${q}`, { body: { min: 0.75 } })
+      toast.success(`Confirmed ${accepted} album${accepted === 1 ? '' : 's'}`)
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
   }
 
   const highConfidence = queue.filter((a) => (a.confidence ?? 0) >= 0.75 && !a.issues.some((i) => i.kind === 'duplicate-album')).length
@@ -87,10 +91,10 @@ export function ReviewPage() {
                 {index + 1} of {queue.length}
               </span>
               <div className="flex gap-1">
-                <Button variant="ghost" size="icon-sm" disabled={index <= 0} onClick={() => setCurrent(queue[index - 1].id)}>
+                <Button variant="ghost" size="icon-sm" aria-label="Previous album" disabled={index <= 0} onClick={() => setCurrent(queue[index - 1].id)}>
                   <ArrowLeft />
                 </Button>
-                <Button variant="ghost" size="icon-sm" disabled={index >= queue.length - 1} onClick={() => setCurrent(queue[index + 1].id)}>
+                <Button variant="ghost" size="icon-sm" aria-label="Next album" disabled={index >= queue.length - 1} onClick={() => setCurrent(queue[index + 1].id)}>
                   <ArrowRight />
                 </Button>
               </div>
@@ -107,7 +111,7 @@ function ScopeToggle({ scope, setScope }: { scope: Scope; setScope: (s: Scope) =
   return (
     <div className="flex rounded-lg border p-0.5 text-sm">
       {(['library', 'inbox'] as const).map((s) => (
-        <button key={s} onClick={() => setScope(s)} className={cn('rounded-md px-3 py-1 capitalize text-muted-foreground', scope === s && 'bg-muted text-foreground')}>
+        <button key={s} aria-pressed={scope === s} onClick={() => setScope(s)} className={cn('focus-ring rounded-md px-3 py-1 capitalize text-muted-foreground', scope === s && 'bg-muted text-foreground')}>
           {s}
         </button>
       ))}
@@ -185,7 +189,11 @@ function AlbumReview({ id, scope, onDone, inQueue }: { id: string; scope: Scope;
   // Keyboard: Enter = use release, S = skip, / = search, F = fingerprint
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
-      if (search || editions || (e.target as HTMLElement).closest('input,textarea')) return
+      if (search || editions || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      // Leave keys alone in fields and open menus; Enter on a focused button or link already activates it.
+      const target = e.target as HTMLElement
+      if (target.closest('input,textarea,select,[contenteditable],[role=menu],[role=dialog]')) return
+      if (e.key === 'Enter' && target.closest('button,a,[role=button]')) return
       if (e.key === 'Enter' && view) void accept()
       else if (e.key === 's') void action('skip')
       else if (e.key === '/') {
@@ -219,10 +227,10 @@ function AlbumReview({ id, scope, onDone, inQueue }: { id: string; scope: Scope;
         </div>
 
         {issues.length > 0 && (
-          <div className="space-y-1.5 border-b bg-amber-500/[0.04] px-5 py-3">
+          <div className="space-y-1.5 border-b bg-warning/5 px-5 py-3">
             {issues.map((i) => (
               <div key={i.kind + i.message} className="flex items-start gap-2 text-sm">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
                 <span>{i.message}</span>
               </div>
             ))}
@@ -234,7 +242,7 @@ function AlbumReview({ id, scope, onDone, inQueue }: { id: string; scope: Scope;
 
         {album.duplicateOf.length > 0 && (
           <div className="flex items-center gap-3 border-b px-5 py-3 text-sm">
-            <Copy className="size-4 text-orange-400" />
+            <Copy className="size-4 text-duplicate" />
             <span className="flex-1">
               Also in your library:{' '}
               {album.duplicateOf.map((d) => (
@@ -281,7 +289,7 @@ function AlbumReview({ id, scope, onDone, inQueue }: { id: string; scope: Scope;
             {fingerprinting ? <Loader2 className="animate-spin" /> : <AudioWaveform />} Fingerprint <Kbd>F</Kbd>
           </Button>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" disabled={busy} />}>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="More actions" disabled={busy} />}>
               <MoreHorizontal />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64">
@@ -344,13 +352,13 @@ function YourFiles({ album, alignment, release }: { album: AlbumDetail; alignmen
           const t = a?.trackId ? tracks.get(a.trackId) : null
           const isDupe = dupes.has(f.path)
           return (
-            <li key={f.path} className={cn('flex items-center gap-2 rounded-md px-2 py-1', !t && alignment && !isDupe && 'bg-rose-500/[0.06]')}>
+            <li key={f.path} className={cn('flex items-center gap-2 rounded-md px-2 py-1', !t && alignment && !isDupe && 'bg-destructive/5')}>
               <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{f.tags.track ?? ''}</span>
               <span className="min-w-0 flex-1 truncate">{f.tags.title || <span className="text-muted-foreground italic">{f.rel.split('/').pop()}</span>}</span>
-              {isDupe && <span className="text-xs text-orange-400">duplicate</span>}
+              {isDupe && <span className="text-xs text-duplicate">duplicate</span>}
               <span className="text-xs uppercase text-muted-foreground">{f.format}</span>
               <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{fmt(f.duration)}</span>
-              {alignment && !isDupe && (t ? <Check className="size-3.5 text-emerald-400" /> : <X className="size-3.5 text-rose-400" />)}
+              {alignment && !isDupe && (t ? <Check aria-label="Matched" className="size-3.5 text-success" /> : <X aria-label="Not matched" className="size-3.5 text-destructive" />)}
             </li>
           )
         })}
@@ -391,8 +399,8 @@ function ReleaseView({ release, alignment, confidence }: { release: Release; ali
                 {t.position}
               </span>
               <span className="min-w-0 flex-1 truncate">{t.title}</span>
-              <span className={cn('w-10 text-right text-xs tabular-nums', drift ? 'text-amber-400' : 'text-muted-foreground')}>{fmt(t.length)}</span>
-              {a ? <Check className="size-3.5 text-emerald-400" /> : <span className="w-3.5 text-center text-xs">–</span>}
+              <span className={cn('w-10 text-right text-xs tabular-nums', drift ? 'text-warning' : 'text-muted-foreground')}>{fmt(t.length)}</span>
+              {a ? <Check aria-label="Matched" className="size-3.5 text-success" /> : <span className="w-3.5 text-center text-xs" aria-label="No file">–</span>}
             </li>
           )
         })}
@@ -419,7 +427,7 @@ function NoCandidates({ fingerprinting, onSearch, onFingerprint }: { fingerprint
 
 function CandidateRow({ c, onClick }: { c: Candidate; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm hover:bg-muted/40">
+    <button onClick={onClick} className="focus-ring flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm hover:bg-muted/40">
       <AlbumCover releaseId={c.release.id} className="size-9 rounded-md" />
       <div className="min-w-0 flex-1">
         <div className="truncate">
@@ -427,7 +435,7 @@ function CandidateRow({ c, onClick }: { c: Candidate; onClick: () => void }) {
         </div>
         <div className="truncate text-xs text-muted-foreground">{releaseMeta(c.release)}</div>
       </div>
-      {c.source === 'fingerprint' && <span className="text-xs text-violet-400">fingerprint</span>}
+      {c.source === 'fingerprint' && <span className="text-xs text-special">fingerprint</span>}
       {c.alignment ? <ConfidenceMeter value={c.confidence} /> : <span className="text-xs text-muted-foreground">compare</span>}
     </button>
   )
@@ -489,7 +497,7 @@ function SearchDialog({
         >
           <div className="relative flex-1">
             <Link2 className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-8" placeholder="https://musicbrainz.org/release/…" value={link} onChange={(e) => setLink(e.target.value)} />
+            <Input aria-label="MusicBrainz release link" className="pl-8" placeholder="https://musicbrainz.org/release/…" value={link} onChange={(e) => setLink(e.target.value)} />
           </div>
           <Button type="submit" variant="outline" disabled={!link}>
             Use link
@@ -524,7 +532,8 @@ function EditionsDialog({ open, onOpenChange, albumId, currentId, onPick }: { op
                 onPick(r.id)
                 onOpenChange(false)
               }}
-              className={cn('flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted/60', r.id === currentId && 'bg-muted')}
+              aria-current={r.id === currentId || undefined}
+              className={cn('focus-ring flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted/60', r.id === currentId && 'bg-muted')}
             >
               <span className="w-12 shrink-0 tabular-nums text-muted-foreground">{yearOf(r) ? r.date?.slice(0, 4) : '—'}</span>
               <span className="min-w-0 flex-1 truncate">

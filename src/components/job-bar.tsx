@@ -45,9 +45,9 @@ export function JobBar() {
         {job.status === 'running' ? (
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
         ) : job.status === 'done' ? (
-          <CheckCircle2 className="size-4 text-emerald-400" />
+          <CheckCircle2 className="size-4 text-success" />
         ) : (
-          <XCircle className="size-4 text-rose-400" />
+          <XCircle className="size-4 text-destructive" />
         )}
         <span className="font-medium">{job.status === 'error' ? `${VERB[job.kind]} failed` : VERB[job.kind]}</span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{job.message}</span>

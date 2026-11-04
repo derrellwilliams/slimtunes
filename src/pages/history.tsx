@@ -10,10 +10,10 @@ import { api, useApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 const STATUS: Record<Run['status'], { label: string; tone: string }> = {
-  applying: { label: 'Running', tone: 'text-sky-400' },
-  applied: { label: 'Applied', tone: 'text-emerald-400' },
-  failed: { label: 'Stopped with errors', tone: 'text-rose-400' },
-  undoing: { label: 'Undoing', tone: 'text-sky-400' },
+  applying: { label: 'Running', tone: 'text-info' },
+  applied: { label: 'Applied', tone: 'text-success' },
+  failed: { label: 'Stopped with errors', tone: 'text-destructive' },
+  undoing: { label: 'Undoing', tone: 'text-info' },
   undone: { label: 'Undone', tone: 'text-muted-foreground' },
 }
 

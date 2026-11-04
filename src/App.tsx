@@ -1,4 +1,4 @@
-import { FolderOpen, History, Loader2, LayoutGrid, ListChecks, Play, Settings2, SlidersHorizontal } from 'lucide-react'
+import { FolderOpen, History, Loader2, LayoutGrid, ListChecks, PackageCheck, Settings2, SlidersHorizontal } from 'lucide-react'
 import { type ComponentType, useState } from 'react'
 import { JobBar } from '@/components/job-bar'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { setToken } from '@/lib/api'
 import { AppProvider, type Route, useApp } from '@/lib/app'
+import { needsReview, readyToOrganize } from '@/lib/stats'
 import { cn } from '@/lib/utils'
 import { ApplyPage } from '@/pages/apply'
 import { HistoryPage } from '@/pages/history'
@@ -15,40 +16,39 @@ import { ReviewPage } from '@/pages/review'
 import { RulesPage } from '@/pages/rules'
 import { SettingsPage } from '@/pages/settings'
 
-const NAV: { route: Route; label: string; icon: ComponentType<{ className?: string }>; step?: number }[] = [
-  { route: 'library', label: 'Library', icon: LayoutGrid, step: 1 },
-  { route: 'rules', label: 'Rules', icon: SlidersHorizontal, step: 2 },
-  { route: 'review', label: 'Review', icon: ListChecks, step: 3 },
-  { route: 'apply', label: 'Preview & apply', icon: Play, step: 4 },
+type NavItem = { route: Route; label: string; icon: ComponentType<{ className?: string }> }
+
+// Places and queues, not steps: the app loops (rescans, inbox), and Library's "Next step" card does the guiding.
+const WORK: NavItem[] = [
+  { route: 'library', label: 'Library', icon: LayoutGrid },
+  { route: 'review', label: 'Review', icon: ListChecks },
+  { route: 'apply', label: 'Ready', icon: PackageCheck },
   { route: 'history', label: 'History', icon: History },
+]
+const SETUP: NavItem[] = [
+  { route: 'rules', label: 'Rules', icon: SlidersHorizontal },
   { route: 'settings', label: 'Settings', icon: Settings2 },
 ]
 
 function Sidebar() {
-  const { route, go, state } = useApp()
-  const review = (state?.stats.byStatus.review ?? 0) + (state?.stats.byStatus.unmatched ?? 0)
+  const { state } = useApp()
+  const byStatus = state?.stats.byStatus ?? {}
+  const counts: Partial<Record<Route, { n: number; label: string; tone: string }>> = {
+    review: { n: needsReview(byStatus), label: 'to review', tone: 'bg-warning/15 text-warning' },
+    apply: { n: readyToOrganize(byStatus), label: 'ready to organize', tone: 'bg-muted text-muted-foreground' },
+  }
   return (
     <aside className="sticky top-0 flex h-svh w-60 shrink-0 flex-col border-r bg-sidebar/40 px-3 py-5">
-      <div className="flex items-center gap-2 px-2 pb-6">
-        <img src="/favicon.svg" alt="" className="size-6 rounded-md ring-1 ring-border" />
-        <span className="text-[15px] font-semibold tracking-tight">SlimTunes</span>
+      <div className="px-2.5 pb-6">
+        <span className="text-base font-semibold tracking-tight">SlimTunes</span>
       </div>
       <nav className="flex flex-col gap-0.5">
-        {NAV.map(({ route: r, label, icon: Icon }) => (
-          <button
-            key={r}
-            onClick={() => go(r)}
-            className={cn(
-              'group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground',
-              route === r && 'bg-muted text-foreground',
-            )}
-          >
-            <Icon className="size-4" />
-            <span className="flex-1 text-left">{label}</span>
-            {r === 'review' && review > 0 && (
-              <span className="rounded-full bg-amber-500/15 px-1.5 text-xs tabular-nums text-amber-400">{review}</span>
-            )}
-          </button>
+        {WORK.map((item) => (
+          <NavButton key={item.route} item={item} count={counts[item.route]} />
+        ))}
+        <div className="mx-2.5 my-3 h-px bg-border" />
+        {SETUP.map((item) => (
+          <NavButton key={item.route} item={item} />
         ))}
       </nav>
       <div className="mt-auto space-y-1 px-2 text-xs text-muted-foreground">
@@ -66,6 +66,29 @@ function Sidebar() {
         )}
       </div>
     </aside>
+  )
+}
+
+function NavButton({ item: { route: r, label, icon: Icon }, count }: { item: NavItem; count?: { n: number; label: string; tone: string } }) {
+  const { route, go } = useApp()
+  return (
+    <button
+      onClick={() => go(r)}
+      aria-current={route === r ? 'page' : undefined}
+      className={cn(
+        'focus-ring group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground',
+        route === r && 'bg-muted text-foreground',
+      )}
+    >
+      <Icon className="size-4" />
+      <span className="flex-1 text-left">{label}</span>
+      {count && count.n > 0 && (
+        <span className={cn('rounded-full px-1.5 text-xs tabular-nums', count.tone)}>
+          {count.n.toLocaleString()}
+          <span className="sr-only"> {count.label}</span>
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -111,14 +134,13 @@ function Unlock() {
           location.reload()
         }}
       >
-        <img src="/favicon.svg" alt="" className="mx-auto size-10 rounded-xl ring-1 ring-border" />
         <div className="space-y-1.5">
           <h1 className="text-lg font-semibold">Unlock SlimTunes</h1>
           <p className="text-sm text-muted-foreground">
             Paste the link SlimTunes printed when it started. It contains a private key so other websites can’t touch your files.
           </p>
         </div>
-        <Input autoFocus placeholder="http://127.0.0.1:4747/?t=…" value={value} onChange={(e) => setValue(e.target.value)} className="font-mono text-xs" />
+        <Input autoFocus aria-label="SlimTunes link" placeholder="http://127.0.0.1:4747/?t=…" value={value} onChange={(e) => setValue(e.target.value)} className="font-mono text-xs" />
         <Button type="submit" className="w-full" disabled={!value.trim()}>
           Unlock
         </Button>

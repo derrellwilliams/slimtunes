@@ -60,8 +60,12 @@ export function RulesPage() {
             <Button
               variant="ghost"
               onClick={async () => {
-                setRules(await api<Rules>('/rules/reset', { body: {} }))
-                toast.success('Rules reset to defaults')
+                try {
+                  setRules(await api<Rules>('/rules/reset', { body: {} }))
+                  toast.success('Rules reset to defaults')
+                } catch (e) {
+                  toast.error((e as Error).message)
+                }
               }}
             >
               <RotateCcw /> Reset
@@ -79,7 +83,7 @@ export function RulesPage() {
                 setCustomOpen(!p)
                 if (p) set({ folderTemplate: p.folder, fileTemplate: p.file })
               }}
-              options={[...PRESETS.map((p) => ({ value: p.value as string, title: <span className="font-mono text-[13px]">{p.title}</span>, description: p.description })), { value: 'custom', title: 'Custom', description: 'Write your own pattern.' }]}
+              options={[...PRESETS.map((p) => ({ value: p.value as string, title: <span className="font-mono text-sm">{p.title}</span>, description: p.description })), { value: 'custom', title: 'Custom', description: 'Write your own pattern.' }]}
             />
             {preset === 'custom' && (
               <div className="mt-4 space-y-3">
@@ -117,10 +121,10 @@ export function RulesPage() {
                 />
               </Field>
               <Field label="Compilations" hint="Albums credited to Various Artists.">
-                <Input className="w-72 font-mono text-xs" value={rules.compilationFolderTemplate} onChange={(e) => set({ compilationFolderTemplate: e.target.value })} />
+                <Input aria-label="Compilations folder" className="w-72 font-mono text-xs" value={rules.compilationFolderTemplate} onChange={(e) => set({ compilationFolderTemplate: e.target.value })} />
               </Field>
               <Field label="Loose tracks" hint="Songs you chose to treat as singles.">
-                <Input className="w-72 font-mono text-xs" value={rules.singlesTemplate} onChange={(e) => set({ singlesTemplate: e.target.value })} />
+                <Input aria-label="Loose tracks folder" className="w-72 font-mono text-xs" value={rules.singlesTemplate} onChange={(e) => set({ singlesTemplate: e.target.value })} />
               </Field>
             </div>
           </Section>
@@ -147,6 +151,7 @@ export function RulesPage() {
               </Field>
               <Field label="Preferred country" hint="Two-letter code, e.g. US, GB, JP. Leave empty for any.">
                 <Input
+                  aria-label="Preferred country"
                   className="w-24 text-center uppercase"
                   maxLength={2}
                   value={rules.release.country}
@@ -218,7 +223,7 @@ export function RulesPage() {
             </div>
             <ul className="divide-y">
               {preview.map((p) => (
-                <li key={p.from} className="space-y-1 px-5 py-3 font-mono text-[11.5px] leading-snug">
+                <li key={p.from} className="space-y-1 px-5 py-3 font-mono text-xs leading-snug">
                   <div className="break-all text-muted-foreground line-through decoration-muted-foreground/40">{p.from}</div>
                   <ArrowDown className="size-3 text-muted-foreground/60" />
                   <div className="break-all text-foreground">{p.to}</div>

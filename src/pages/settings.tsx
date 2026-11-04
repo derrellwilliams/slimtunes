@@ -49,7 +49,7 @@ export function SettingsPage() {
               onChange={(v) => void save({ inbox: { autoApply: v } })}
             />
             <Field label="Check now" hint="Normally runs 30 seconds after files stop arriving.">
-              <Button variant="outline" disabled={!state.inbox.path} onClick={() => api('/inbox/process', { body: {} })}>
+              <Button variant="outline" disabled={!state.inbox.path} onClick={() => api('/inbox/process', { body: {} }).catch((e) => toast.error(e.message))}>
                 Process inbox
               </Button>
             </Field>
@@ -81,7 +81,7 @@ export function SettingsPage() {
                 )
               }
             >
-              {state.fpcalc ? <CheckCircle2 className="size-5 text-emerald-400" /> : <XCircle className="size-5 text-muted-foreground" />}
+              {state.fpcalc ? <CheckCircle2 aria-label="Installed" className="size-5 text-success" /> : <XCircle aria-label="Not installed" className="size-5 text-muted-foreground" />}
             </Field>
             <Field
               label="AcoustID API key"
@@ -100,6 +100,7 @@ export function SettingsPage() {
                 }}
               >
                 <Input
+                  aria-label="AcoustID API key"
                   type="password"
                   autoComplete="off"
                   placeholder={state.hasAcoustidKey ? '•••••••• saved' : 'Paste key'}
